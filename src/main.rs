@@ -36,7 +36,7 @@ async fn main() {
                     service_tasks.len()
                 )
             },
-            Err(error) => error!("We were unable to receive and parse any Service Tasks")
+            Err(error) => error!("We were unable to receive and parse any Service Tasks. Error: {:#}", error)
         }
         break;
     }
