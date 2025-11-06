@@ -3,6 +3,7 @@
 /// is available.
 
 mod structures;
+mod process_variables;
 
 use std::error::Error;
 use config::Config;
