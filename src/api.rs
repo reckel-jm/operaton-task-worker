@@ -6,6 +6,7 @@ use url::Url;
 
 use crate::process_variables::{parse_process_instance_variables, ProcessInstanceVariable};
 use crate::structures::{ConfigParams, ServiceTask};
+use crate::types::OutputVariables;
 
 pub async fn get_open_service_tasks(config: &ConfigParams) -> Result<Vec<ServiceTask>, Box<dyn Error>> {
     let mut service_tasks_endpoint = config.url().clone();
@@ -180,6 +181,28 @@ struct CompleteRequest<'a> {
     variables: crate::types::OutputVariables,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FailureRequest<'a> {
+    worker_id: &'a str,
+    error_message: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_details: Option<&'a str>,
+    retries: i32,
+    retry_timeout: i64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BpmnErrorRequest<'a> {
+    worker_id: &'a str,
+    error_code: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_message: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    variables: Option<crate::types::OutputVariables>,
+}
+
 pub async fn complete_external_task(
     config: &ConfigParams,
     external_task_id: &str,
@@ -218,5 +241,103 @@ pub async fn complete_external_task(
     }
 
     trace!("Task '{}' completed", external_task_id);
+    Ok(())
+}
+
+pub async fn report_external_task_failure(
+    config: &ConfigParams,
+    external_task_id: &str,
+    error_message: &str,
+    error_details: Option<&str>,
+    retries: i32,
+    retry_timeout_ms: i64,
+) -> Result<(), Box<dyn Error>> {
+    let mut endpoint = config.url().clone();
+    let path_string = format!(
+        "engine-rest/external-task/{}/failure",
+        external_task_id
+    );
+    endpoint.set_path(path_string.as_str());
+    info!("Report failure for external task at {}", endpoint);
+
+    let client = reqwest::Client::new();
+    let request = build_authenticated_post(
+        &client,
+        endpoint.clone(),
+        config.username(),
+        config.password(),
+    )
+    .json(&FailureRequest {
+        worker_id: config.id(),
+        error_message,
+        error_details,
+        retries,
+        retry_timeout: retry_timeout_ms,
+    });
+
+    let response = request.send().await.map_err(|err| {
+        error!(
+            "Error while calling API endpoint '{}': {:#?}",
+            endpoint, err
+        );
+        err
+    })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_else(|_| "<no body>".to_string());
+        error!("Failure report failed: status={} body={} ", status, body);
+        return Err(format!("Failure report failed with status {status}").into());
+    }
+
+    trace!("Task '{}' failure reported", external_task_id);
+    Ok(())
+}
+
+pub async fn report_bpmn_error(
+    config: &ConfigParams,
+    external_task_id: &str,
+    error_code: &str,
+    error_message: Option<&str>,
+    variables: Option<OutputVariables>,
+) -> Result<(), Box<dyn Error>> {
+    let mut endpoint = config.url().clone();
+    let path_string = format!(
+        "engine-rest/external-task/{}/bpmnError",
+        external_task_id
+    );
+    endpoint.set_path(path_string.as_str());
+    info!("Report BPMN error for external task at {}", endpoint);
+
+    let client = reqwest::Client::new();
+    let request = build_authenticated_post(
+        &client,
+        endpoint.clone(),
+        config.username(),
+        config.password(),
+    )
+    .json(&BpmnErrorRequest {
+        worker_id: config.id(),
+        error_code,
+        error_message,
+        variables,
+    });
+
+    let response = request.send().await.map_err(|err| {
+        error!(
+            "Error while calling API endpoint '{}': {:#?}",
+            endpoint, err
+        );
+        err
+    })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_else(|_| "<no body>".to_string());
+        error!("BPMN error report failed: status={} body={} ", status, body);
+        return Err(format!("BPMN error report failed with status {status}").into());
+    }
+
+    trace!("Task '{}' BPMN error reported", external_task_id);
     Ok(())
 }

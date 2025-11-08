@@ -59,12 +59,34 @@ pub enum ProcessInstanceVariable {
     String(StringVar),
 }
 
+impl ProcessInstanceVariable {
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            ProcessInstanceVariable::Boolean(b) => Some(b.value),
+            _ => None,
+        }
+    }
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            ProcessInstanceVariable::String(s) => Some(&s.value),
+            _ => None,
+        }
+    }
+    pub fn as_json(&self) -> Option<&serde_json::Value> {
+        match self {
+            ProcessInstanceVariable::Json(j) => Some(&j.json_value.value),
+            _ => None,
+        }
+    }
+}
+
 /// This represents an entry of the original JSON
 #[derive(Deserialize)]
 pub struct Entry {
     #[serde(rename = "type")]
     typ: String,
 
+    #[serde(default)]
     name: String,
 
     value: serde_json::Value,
@@ -114,12 +136,13 @@ impl<'de> Deserialize<'de> for ProcessInstanceVariable {
 }
 
 pub fn parse_process_instance_variables(json_str: &str) -> HashMap<String, ProcessInstanceVariable> {
-    let parsed_vector: Vec<Entry>= serde_json::from_str(json_str).unwrap_or_else(|_| {
+    // According to Camunda 7/Operaton, the variables endpoint returns an object map of name -> { type, value, valueInfo }
+    let parsed_map: HashMap<String, Entry> = serde_json::from_str(json_str).unwrap_or_else(|_| {
         error!("Error while parsing \"{}\", ignoring it for now.", json_str);
-        vec![] }
-    );
+        HashMap::new()
+    });
     let mut result = HashMap::new();
-    for entry in parsed_vector {
+    for (name, entry) in parsed_map {
         let parsed_var = match entry.typ.as_str() {
             "Json" => ProcessInstanceVariable::Json(JsonVar {
                 json_value: serde_json::from_value(entry.value).unwrap(),
@@ -135,7 +158,7 @@ pub fn parse_process_instance_variables(json_str: &str) -> HashMap<String, Proce
             }),
             _ => continue,
         };
-        result.insert(entry.name, parsed_var);
+        result.insert(name, parsed_var);
     }
     result
 }

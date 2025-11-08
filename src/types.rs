@@ -34,6 +34,33 @@ pub fn out_bool(value: bool) -> OutVariable {
     }
 }
 
+#[allow(dead_code)]
+pub fn out_integer(value: i32) -> OutVariable {
+    OutVariable {
+        value: serde_json::Value::Number(serde_json::Number::from(value)),
+        typ: "Integer".to_string(),
+        value_info: std::collections::HashMap::new(),
+    }
+}
+
+#[allow(dead_code)]
+pub fn out_long(value: i64) -> OutVariable {
+    OutVariable {
+        value: serde_json::Value::Number(serde_json::Number::from(value)),
+        typ: "Long".to_string(),
+        value_info: std::collections::HashMap::new(),
+    }
+}
+
+#[allow(dead_code)]
+pub fn out_double(value: f64) -> OutVariable {
+    OutVariable {
+        value: serde_json::json!(value),
+        typ: "Double".to_string(),
+        value_info: std::collections::HashMap::new(),
+    }
+}
+
 pub fn out_json(value: &serde_json::Value) -> OutVariable {
     let mut value_info = std::collections::HashMap::new();
     value_info.insert(
@@ -47,3 +74,30 @@ pub fn out_json(value: &serde_json::Value) -> OutVariable {
         value_info,
     }
 }
+
+// A typed error that signals a BPMN error should be raised instead of a technical failure.
+#[derive(Debug, Clone)]
+pub struct BpmnError {
+    pub code: String,
+    pub message: Option<String>,
+}
+
+impl BpmnError {
+    pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self { code: code.into(), message: Some(message.into()) }
+    }
+    pub fn with_code_only(code: impl Into<String>) -> Self {
+        Self { code: code.into(), message: None }
+    }
+}
+
+impl std::fmt::Display for BpmnError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.message {
+            Some(m) => write!(f, "BPMN Error {}: {}", self.code, m),
+            None => write!(f, "BPMN Error {}", self.code),
+        }
+    }
+}
+
+impl std::error::Error for BpmnError {}

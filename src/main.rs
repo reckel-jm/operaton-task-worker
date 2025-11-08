@@ -13,6 +13,7 @@ mod settings;
 use std::collections::HashMap;
 use log::{debug, error, warn, info, trace};
 use crate::process_variables::ProcessInstanceVariable;
+use crate::types::BpmnError;
 
 #[tokio::main]
 async fn main() {
@@ -62,6 +63,29 @@ async fn main() {
                             }
                             Err(err) => {
                                 error!("Execution of function for Service Task {} failed: {:#?}", service_task.id(), err);
+                                // Distinguish BPMN business errors from technical failures
+                                if let Some(bpmn) = err.downcast_ref::<BpmnError>() {
+                                    if let Err(e) = api::report_bpmn_error(
+                                        &config,
+                                        service_task.id(),
+                                        &bpmn.code,
+                                        bpmn.message.as_deref(),
+                                        None,
+                                    ).await {
+                                        error!("Could not report BPMN error for task {}: {:#?}", service_task.id(), e);
+                                    }
+                                } else {
+                                    if let Err(e) = api::report_external_task_failure(
+                                        &config,
+                                        service_task.id(),
+                                        &err.to_string(),
+                                        None,
+                                        0,
+                                        0,
+                                    ).await {
+                                        error!("Could not report failure for task {}: {:#?}", service_task.id(), e);
+                                    }
+                                }
                             }
                         }
                     } else {
