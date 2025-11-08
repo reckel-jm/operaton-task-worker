@@ -15,6 +15,52 @@ use url::Url;
 use crate::process_variables::{ProcessInstanceVariable, parse_process_instance_variables};
 use crate::structures::ServiceTask;
 
+// ===== Types for external task function handling and completion payloads =====
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OutVariable {
+    #[serde(rename = "value")]
+    pub value: serde_json::Value,
+    #[serde(rename = "type")]
+    pub typ: String,
+    #[serde(rename = "valueInfo")]
+    pub value_info: std::collections::HashMap<String, serde_json::Value>,
+}
+
+pub type InputVariables = std::collections::HashMap<String, crate::process_variables::ProcessInstanceVariable>;
+pub type OutputVariables = std::collections::HashMap<String, OutVariable>;
+pub type ExternalTaskFn = fn(&InputVariables) -> Result<OutputVariables, Box<dyn std::error::Error>>;
+
+fn out_string(value: impl Into<String>) -> OutVariable {
+    OutVariable {
+        value: serde_json::Value::String(value.into()),
+        typ: "String".to_string(),
+        value_info: std::collections::HashMap::new(),
+    }
+}
+
+fn out_bool(value: bool) -> OutVariable {
+    OutVariable {
+        value: serde_json::Value::Bool(value),
+        typ: "Boolean".to_string(),
+        value_info: std::collections::HashMap::new(),
+    }
+}
+
+fn out_json(value: &serde_json::Value) -> OutVariable {
+    let mut value_info = std::collections::HashMap::new();
+    value_info.insert(
+        "serializationDataFormat".to_string(),
+        serde_json::Value::String("application/json".to_string()),
+    );
+    OutVariable {
+        // Camunda 7 expects JSON to be provided as a serialized string with serializationDataFormat
+        value: serde_json::Value::String(value.to_string()),
+        typ: "Json".to_string(),
+        value_info,
+    }
+}
+
 /// The prefix for all environment variables used by Operaton Task Worker
 ///
 /// Note: This does not apply for Rust-specific environment variables such as `LOGLEVEL`.
@@ -59,8 +105,18 @@ async fn main() {
                     match map_service_task_to_function(&service_task) {
                         Some(function) => {
                             debug!("Executing function for Service Task: {:#?}", service_task);
-                            // TODO: Pass input_vars to function once the function signature supports it
-                            function().expect("TODO: panic message");
+                            match function(&input_vars) {
+                                Ok(output_vars) => {
+                                    if let Err(err) = complete_external_task(&config, service_task.id(), output_vars).await {
+                                        error!("Could not complete external task {}: {:#?}", service_task.id(), err);
+                                    } else {
+                                        info!("Completed external task {}", service_task.id());
+                                    }
+                                }
+                                Err(err) => {
+                                    error!("Execution of function for Service Task {} failed: {:#?}", service_task.id(), err);
+                                }
+                            }
                         },
                         None => {
                             warn!("No function found for Service Task: {:#?}. SKIP.", service_task.activity_id());
@@ -255,6 +311,77 @@ fn load_config() -> ConfigParams {
 }
 
 /// Maps the Service Task to an executable function.
-fn map_service_task_to_function(service_task: &ServiceTask) -> Option<fn() -> Result<Vec<ProcessInstanceVariable>, Box<dyn Error>>> {
-    None
+fn map_service_task_to_function(service_task: &ServiceTask) -> Option<ExternalTaskFn> {
+    match service_task.activity_id() {
+        // Example mapping: return a demo function for a known activity id
+        "example_echo" => Some(example_echo),
+        "ServiceTask_GetScannedFiles" => Some(get_scanned_files),
+        _ => None,
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CompleteRequest<'a> {
+    worker_id: &'a str,
+    variables: OutputVariables,
+}
+
+async fn complete_external_task(
+    config: &ConfigParams,
+    external_task_id: &str,
+    variables: OutputVariables,
+) -> Result<(), Box<dyn Error>> {
+    let mut endpoint = config.url().clone();
+    let path_string = format!(
+        "engine-rest/external-task/{}/complete",
+        external_task_id
+    );
+    endpoint.set_path(path_string.as_str());
+    info!("Complete external task at {}", endpoint);
+
+    let client = reqwest::Client::new();
+    let request = build_authenticated_post(
+        &client,
+        endpoint.clone(),
+        config.username(),
+        config.password(),
+    )
+    .json(&CompleteRequest { worker_id: config.id(), variables });
+
+    let response = request.send().await.map_err(|err| {
+        error!(
+            "Error while calling API endpoint '{}': {:#?}",
+            endpoint, err
+        );
+        err
+    })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_else(|_| "<no body>".to_string());
+        error!("Complete request failed: status={} body={} ", status, body);
+        return Err(format!("Complete failed with status {status}").into());
+    }
+
+    trace!("Task '{}' completed", external_task_id);
+    Ok(())
+}
+
+fn example_echo(input: &InputVariables) -> Result<OutputVariables, Box<dyn std::error::Error>> {
+    let mut out: OutputVariables = std::collections::HashMap::new();
+    out.insert("workerResponse".to_string(), out_string("ok"));
+
+    // Return a summary JSON of the input variable names
+    let keys: Vec<&String> = input.keys().collect();
+    let summary = serde_json::json!({ "keys": keys });
+    out.insert("summary".to_string(), out_json(&summary));
+
+    Ok(out)
+}
+
+fn get_scanned_files(input: &InputVariables) -> Result<OutputVariables, Box<dyn std::error::Error>> {
+    let mut out: OutputVariables = std::collections::HashMap::new();
+    out.insert("FILENAMES".to_string(), out_string("TEST"));
+    Ok(out)
 }
