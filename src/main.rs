@@ -5,13 +5,14 @@
 mod structures;
 mod process_variables;
 
+use std::collections::HashMap;
 use std::error::Error;
 use config::Config;
 use structures::ConfigParams;
 
 use log::{debug, error, warn, log_enabled, info, Level, trace};
 use url::Url;
-use crate::process_variables::ProcessInstanceVariable;
+use crate::process_variables::{ProcessInstanceVariable, parse_process_instance_variables};
 use crate::structures::ServiceTask;
 
 /// The prefix for all environment variables used by Operaton Task Worker
@@ -43,17 +44,25 @@ async fn main() {
                 );
 
                 for service_task in service_tasks {
+                    // Try to lock the specific external task and read its input variables
+                    if let Err(err) = lock_external_task(&config, service_task.id(), 60_000).await {
+                        warn!("Could not lock task {}: {:#?}", service_task.id(), err);
+                        continue;
+                    }
+
+                    let input_vars: HashMap<String, ProcessInstanceVariable> = match get_external_task_variables(&config, service_task.id()).await {
+                        Ok(vars) => vars,
+                        Err(err) => {
+                            error!("Error while fetching external task variables: {:#?}", err);
+                            HashMap::new()
+                        }
+                    };
+                    trace!("External task variables for {} => {:#?}", service_task.id(), input_vars);
+
                     match map_service_task_to_function(&service_task) {
                         Some(function) => {
-                            // Get process instance variables
-                            let variables = match get_process_instance_variables(&config, service_task.process_instance_id()).await {
-                                Ok(variables) => variables,
-                                Err(err) => {
-                                    error!("Error while fetching process instance variables: {:#?}", err);
-                                    vec![]
-                                }
-                            };
                             debug!("Executing function for Service Task: {:#?}", service_task);
+                            // TODO: Pass input_vars to function once the function signature supports it
                             function().expect("TODO: panic message");
                         },
                         None => {
@@ -127,6 +136,115 @@ fn build_authenticated_request(
     }
 
     request
+}
+
+fn build_authenticated_post(
+    client: &reqwest::Client,
+    url: Url,
+    username: &str,
+    password: &str,
+) -> reqwest::RequestBuilder {
+    let mut request = client.post(url);
+
+    if !username.is_empty() {
+        request = request.basic_auth(username, Some(password));
+        trace!("Using HTTP Basic authentication");
+    } else {
+        trace!("No HTTP authentication configured (empty username)");
+    }
+
+    request
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LockRequest<'a> {
+    worker_id: &'a str,
+    lock_duration: u64,
+}
+
+async fn lock_external_task(
+    config: &ConfigParams,
+    external_task_id: &str,
+    lock_duration_ms: u64,
+) -> Result<(), Box<dyn Error>> {
+    let mut endpoint = config.url().clone();
+    let path_string = format!(
+        "engine-rest/external-task/{}/lock",
+        external_task_id
+    );
+    endpoint.set_path(path_string.as_str());
+    info!("Lock external task at {}", endpoint);
+
+    let client = reqwest::Client::new();
+    let request = build_authenticated_post(
+        &client,
+        endpoint.clone(),
+        config.username(),
+        config.password(),
+    )
+    .json(&LockRequest { worker_id: config.id(), lock_duration: lock_duration_ms });
+
+    let response = request.send().await.map_err(|err| {
+        error!(
+            "Error while calling API endpoint '{}': {:#?}",
+            endpoint, err
+        );
+        err
+    })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_else(|_| "<no body>".to_string());
+        error!("Lock request failed: status={} body={} ", status, body);
+        return Err(format!("Lock failed with status {status}").into());
+    }
+
+    trace!("Task '{}' locked for {} ms", external_task_id, lock_duration_ms);
+    Ok(())
+}
+
+async fn get_external_task_variables(
+    config: &ConfigParams,
+    external_task_id: &str,
+) -> Result<HashMap<String, ProcessInstanceVariable>, Box<dyn Error>> {
+    let mut endpoint = config.url().clone();
+    let path_string = format!(
+        "engine-rest/variable-instance?processInstanceIdIn={}",
+        external_task_id
+    );
+    endpoint.set_path(path_string.as_str());
+    endpoint.set_query(Some("deserializeValues=true"));
+
+    info!("Fetch external task variables at {}", endpoint);
+
+    let client = reqwest::Client::new();
+    let request = build_authenticated_request(
+        &client,
+        endpoint.clone(),
+        config.username(),
+        config.password(),
+    );
+
+    let response = request.send().await.map_err(|err| {
+        error!(
+            "Error while calling API endpoint '{}': {:#?}",
+            endpoint, err
+        );
+        err
+    })?;
+
+    let body = response.text().await.map_err(|err| {
+        error!("An error occurred while reading the response body: {:#?}", err);
+        err
+    })?;
+
+    trace!("Variables raw: {}", body);
+
+    let parsed = parse_process_instance_variables(&body);
+    trace!("Parsed variables: {:#?}", parsed);
+
+    Ok(parsed)
 }
 
 async fn get_process_instance_variables(

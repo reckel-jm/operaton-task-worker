@@ -44,6 +44,8 @@ impl ConfigParams {
     pub fn poll_interval(&self) -> usize {
         self.poll_interval
     }
+
+    pub fn id(&self) -> &str { &self.id }
 }
 
 fn default_url() -> Url {
@@ -59,6 +61,8 @@ fn default_task_worker_id() -> String { "operaton_task_worker".to_string() }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceTask {
+    /// The external task id (Camunda/Operaton external task id)
+    id: String,
     /// The id of the Service Task (called `activityId` in Operaton)
     activity_id: String,
     process_instance_id: String,
@@ -70,6 +74,8 @@ pub struct ServiceTask {
 }
 
 impl ServiceTask {
+    pub fn id(&self) -> &str { &self.id }
+
     pub fn activity_id(&self) -> &str {
         &self.activity_id
     }
