@@ -119,20 +119,20 @@ pub fn parse_process_instance_variables(json_str: &str) -> HashMap<String, Proce
         vec![] }
     );
     let mut result = HashMap::new();
-    for ( entry) in parsed_vector {
+    for entry in parsed_vector {
         let parsed_var = match entry.typ.as_str() {
             "Json" => ProcessInstanceVariable::Json(JsonVar {
                 json_value: serde_json::from_value(entry.value).unwrap(),
                 value_info: entry.value_info,
             }),
-            "Boolean" => (ProcessInstanceVariable::Boolean(BoolVar {
+            "Boolean" => ProcessInstanceVariable::Boolean(BoolVar {
                 value: serde_json::from_value(entry.value).unwrap(),
                 value_info: entry.value_info,
-            })),
-            "String" => (ProcessInstanceVariable::String(StringVar {
+            }),
+            "String" => ProcessInstanceVariable::String(StringVar {
                 value: serde_json::from_value(entry.value).unwrap(),
                 value_info: entry.value_info,
-            })),
+            }),
             _ => continue,
         };
         result.insert(entry.name, parsed_var);
@@ -149,6 +149,6 @@ mod test {
         let response_string: &str = "{\"checklist_vj3ler\":{\"type\":\"Json\",\"value\":{\"dataFormatName\":\"application/json\",\"value\":false,\"string\":false,\"object\":false,\"boolean\":false,\"number\":false,\"array\":true,\"null\":false,\"nodeType\":\"ARRAY\"},\"valueInfo\":{}},\"checkbox_6ow5yg\":{\"type\":\"Boolean\",\"value\":true,\"valueInfo\":{}}}";
         let variables = parse_process_instance_variables(response_string);
         dbg!(&variables);
-        assert!(variables.len() > 0)
+        assert!(!variables.is_empty())
     }
 }

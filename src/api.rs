@@ -10,7 +10,7 @@ use crate::structures::{ConfigParams, ServiceTask};
 pub async fn get_open_service_tasks(config: &ConfigParams) -> Result<Vec<ServiceTask>, Box<dyn Error>> {
     let mut service_tasks_endpoint = config.url().clone();
     service_tasks_endpoint.set_path("engine-rest/external-task");
-    info!("Fetch data at {}", service_tasks_endpoint.to_string());
+    info!("Fetch data at {}", service_tasks_endpoint);
 
     // Build the request with optional Basic Auth when username is provided
     let client = reqwest::Client::new();
@@ -40,7 +40,7 @@ pub async fn get_open_service_tasks(config: &ConfigParams) -> Result<Vec<Service
         Err(err) => {
             error!(
                 "Error while calling API endpoint '{}': {:#?}",
-                service_tasks_endpoint.to_string(),
+                service_tasks_endpoint,
                 err
             );
             Err(err.into())
