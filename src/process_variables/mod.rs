@@ -43,10 +43,19 @@ pub struct BoolVar {
     pub value_info: HashMap<String, serde_json::Value>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StringVar {
+    pub value: String,
+
+    #[serde(rename = "valueInfo")]
+    pub value_info: HashMap<String, serde_json::Value>,
+}
+
 #[derive(Debug)]
 pub enum ProcessInstanceVariable {
     Json(JsonVar),
     Boolean(BoolVar),
+    String(StringVar),
 }
 
 /// This represents an entry of the original JSON
@@ -85,7 +94,14 @@ impl<'de> Deserialize<'de> for ProcessInstanceVariable {
                         value_info: entry.value_info,
                     };
                     Ok(ProcessInstanceVariable::Boolean(bool_var))
-                }
+                },
+                "String" => {
+                    let string_var = StringVar {
+                        value: serde_json::from_value(entry.value).map_err(serde::de::Error::custom)?,
+                        value_info: entry.value_info,
+                    };
+                    Ok(ProcessInstanceVariable::String(string_var))
+                },
                 _ => Err(serde::de::Error::custom(format!("unknown type: {}", entry.typ))),
             };
         }
@@ -104,6 +120,10 @@ pub fn parse_process_instance_variables(json_str: &str) -> HashMap<String, Proce
                 value_info: entry.value_info,
             })),
             "Boolean" => (key, ProcessInstanceVariable::Boolean(BoolVar {
+                value: serde_json::from_value(entry.value).unwrap(),
+                value_info: entry.value_info,
+            })),
+            "String" => (key, ProcessInstanceVariable::String(StringVar {
                 value: serde_json::from_value(entry.value).unwrap(),
                 value_info: entry.value_info,
             })),
