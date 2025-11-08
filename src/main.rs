@@ -10,6 +10,7 @@ use config::Config;
 use structures::ConfigParams;
 
 use log::{debug, error, warn, log_enabled, info, Level, trace};
+use crate::process_variables::ProcessInstanceVariable;
 use crate::structures::ServiceTask;
 
 /// The prefix for all environment variables used by Operaton Task Worker
@@ -33,13 +34,24 @@ async fn main() {
     trace!("Enter the main loop");
 
     loop {
-        info!("Test");
         match get_open_service_tasks(&config).await {
             Ok(service_tasks) => {
-                trace!(
-                    "We received {} open Service Tasks from Operaton.",
+                info!(
+                    "We received {} open external Service Tasks from Operaton.",
                     service_tasks.len()
-                )
+                );
+
+                service_tasks.iter().for_each(|service_task|
+                    match map_service_task_to_function(service_task) {
+                        Some(function) => {
+                            debug!("Executing function for Service Task: {:#?}", service_task);
+                            function().expect("TODO: panic message");
+                        },
+                        None => {
+                            warn!("No function found for Service Task: {:#?}. SKIP.", service_task.business_key());
+                        }
+                    }
+                );
             },
             Err(error) => error!("We were unable to receive and parse any Service Tasks. Error: {:#}", error)
         }
@@ -54,7 +66,18 @@ async fn get_open_service_tasks(config: &ConfigParams) -> Result<Vec<ServiceTask
     service_tasks_endpoint.set_path("engine-rest/external-task");
     info!("Fetch data at {}", service_tasks_endpoint.to_string());
 
-    match reqwest::get(service_tasks_endpoint.clone()).await {
+    // Build the request with optional Basic Auth when username is provided
+    let client = reqwest::Client::new();
+    let mut request = client.get(service_tasks_endpoint.clone());
+
+    if !config.username().is_empty() {
+        request = request.basic_auth(config.username().to_string(), Some(config.password().to_string()));
+        trace!("Using HTTP Basic authentication");
+    } else {
+        trace!("No HTTP authentication configured (empty username)");
+    }
+
+    match request.send().await {
         Ok(response) => {
             match response.json().await {
                 Ok(unwrapped_json) => {
@@ -63,8 +86,7 @@ async fn get_open_service_tasks(config: &ConfigParams) -> Result<Vec<ServiceTask
                     Ok(service_tasks)
                 },
                 Err(err) => {
-                    error!("An error occurred while parsing the JSON: {:#?}",
-                    err);
+                    error!("An error occurred while parsing the JSON: {:#?}", err);
                     Err(err.into())
                 }
             }
@@ -89,4 +111,9 @@ fn load_config() -> ConfigParams {
         .unwrap();
 
     settings.try_deserialize().unwrap()
+}
+
+/// Maps the Service Task to an executable function.
+fn map_service_task_to_function(service_task: &ServiceTask) -> Option<fn() -> Result<Vec<ProcessInstanceVariable>, Box<dyn Error>>> {
+    None
 }
