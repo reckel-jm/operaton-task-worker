@@ -20,8 +20,12 @@ pub struct ConfigParams {
     password: String,
 
     /// The interval in milliseconds for polling the Operaton Task Worker for new tasks
-    #[serde(default = "default_poll_intervall")]
+    #[serde(default = "default_poll_interval")]
     poll_interval: usize,
+
+    #[serde(default = "default_task_worker_id")]
+    /// The task worker id which will be registered with Operaton
+    id: String,
 }
 
 impl ConfigParams {
@@ -47,7 +51,9 @@ fn default_url() -> Url {
 }
 
 /// The default poll interval in milliseconds
-fn default_poll_intervall() -> usize { 500 }
+fn default_poll_interval() -> usize { 500 }
+
+fn default_task_worker_id() -> String { "operaton_task_worker".to_string() }
 
 /// An Operaton Service Task with its description elements
 #[derive(Serialize, Deserialize, Clone, Debug)]
