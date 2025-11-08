@@ -42,9 +42,17 @@ async fn main() {
                     service_tasks.len()
                 );
 
-                service_tasks.iter().for_each(|service_task|
-                    match map_service_task_to_function(service_task) {
+                for service_task in service_tasks {
+                    match map_service_task_to_function(&service_task) {
                         Some(function) => {
+                            // Get process instance variables
+                            let variables = match get_process_instance_variables(&config, service_task.process_instance_id()).await {
+                                Ok(variables) => variables,
+                                Err(err) => {
+                                    error!("Error while fetching process instance variables: {:#?}", err);
+                                    vec![]
+                                }
+                            };
                             debug!("Executing function for Service Task: {:#?}", service_task);
                             function().expect("TODO: panic message");
                         },
@@ -52,7 +60,7 @@ async fn main() {
                             warn!("No function found for Service Task: {:#?}. SKIP.", service_task.activity_id());
                         }
                     }
-                );
+                };
             },
             Err(error) => error!("We were unable to receive and parse any Service Tasks. Error: {:#}", error)
         }
@@ -123,9 +131,12 @@ fn build_authenticated_request(
 
 async fn get_process_instance_variables(
     config: &ConfigParams,
+    process_instance_id: &str,
 ) -> Result<Vec<ProcessInstanceVariable>, Box<dyn Error>> {
     let mut piv_endpoint = config.url().clone();
-    piv_endpoint.set_path("engine-rest/external-task");
+    let path_string = format!("engine-rest/process-instance/{}/variables", process_instance_id);
+    piv_endpoint.set_path(path_string.as_str());
+
     info!("Fetch data at {}", piv_endpoint);
 
     let client = reqwest::Client::new();
