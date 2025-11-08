@@ -50,13 +50,10 @@ async fn main() {
                         continue;
                     }
 
-                    let input_vars: HashMap<String, ProcessInstanceVariable> = match get_external_task_variables(&config, service_task.id()).await {
-                        Ok(vars) => vars,
-                        Err(err) => {
-                            error!("Error while fetching external task variables: {:#?}", err);
-                            HashMap::new()
-                        }
-                    };
+                    let input_vars: HashMap<String, ProcessInstanceVariable> = get_process_instance_variables(&config, service_task.process_instance_id()).await.unwrap_or_else(|err| {
+                        error!("Error while fetching external task variables: {:#?}", err);
+                        HashMap::new()
+                    });
                     trace!("External task variables for {} => {:#?}", service_task.id(), input_vars);
 
                     match map_service_task_to_function(&service_task) {
@@ -204,17 +201,15 @@ async fn lock_external_task(
     Ok(())
 }
 
-async fn get_external_task_variables(
+async fn get_process_instance_variables(
     config: &ConfigParams,
-    external_task_id: &str,
+    process_instance_id: &str,
 ) -> Result<HashMap<String, ProcessInstanceVariable>, Box<dyn Error>> {
     let mut endpoint = config.url().clone();
-    let path_string = format!(
-        "engine-rest/variable-instance?processInstanceIdIn={}",
-        external_task_id
-    );
-    endpoint.set_path(path_string.as_str());
-    endpoint.set_query(Some("deserializeValues=true"));
+    let path_string = "engine-rest/variable-instance";
+
+    endpoint.set_path(path_string);
+    endpoint.set_query(Some(format!("processInstanceIdIn={}", process_instance_id).as_str()));
 
     info!("Fetch external task variables at {}", endpoint);
 
@@ -247,40 +242,6 @@ async fn get_external_task_variables(
     Ok(parsed)
 }
 
-async fn get_process_instance_variables(
-    config: &ConfigParams,
-    process_instance_id: &str,
-) -> Result<Vec<ProcessInstanceVariable>, Box<dyn Error>> {
-    let mut piv_endpoint = config.url().clone();
-    let path_string = format!("engine-rest/process-instance/{}/variables", process_instance_id);
-    piv_endpoint.set_path(path_string.as_str());
-
-    info!("Fetch data at {}", piv_endpoint);
-
-    let client = reqwest::Client::new();
-    let request = build_authenticated_request(
-        &client,
-        piv_endpoint.clone(),
-        config.username(),
-        config.password(),
-    );
-
-    let response = request.send().await.map_err(|err| {
-        error!(
-            "Error while calling API endpoint '{}': {:#?}",
-            piv_endpoint, err
-        );
-        err
-    })?;
-
-    let pivs: Vec<ProcessInstanceVariable> = response.json().await.map_err(|err| {
-        error!("An error occurred while parsing the JSON: {:#?}", err);
-        err
-    })?;
-
-    trace!("Parsed: {:#?}", pivs);
-    Ok(pivs)
-}
 
 /// Loads the configuration into a [ConfigParams] struct. The function may panic, but it should not
 /// happen because [ConfigParams] provides default values for all configured entries.

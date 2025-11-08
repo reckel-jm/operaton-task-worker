@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use log::error;
 /// This module handles Process Variables and their different kinds
 
 use serde::*;
@@ -111,7 +112,10 @@ impl<'de> Deserialize<'de> for ProcessInstanceVariable {
 }
 
 pub fn parse_process_instance_variables(json_str: &str) -> HashMap<String, ProcessInstanceVariable> {
-    let map: HashMap<String, Entry> = serde_json::from_str(json_str).unwrap();
+    let map: HashMap<String, Entry> = serde_json::from_str(json_str).unwrap_or_else(|_| {
+        error!("Error while parsing \"{}\", ignoring it for now.", json_str);
+        HashMap::new() }
+    );
     let mut result = HashMap::new();
     for (key, entry) in map {
         let var = match entry.typ.as_str() {
