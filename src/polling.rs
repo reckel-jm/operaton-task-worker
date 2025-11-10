@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use log::{debug, error, info, trace, warn};
 use crate::{api, registry};
-use crate::api::*;
 use crate::process_variables::ProcessInstanceVariable;
 use crate::structures::ConfigParams;
 use crate::types::BpmnError;

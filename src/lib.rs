@@ -14,7 +14,7 @@ The crate is tested with Operaton 1.0 and intends to provide a stable abstractio
 Camunda 7 is not supported, however, at the current state, it should be possible to use the crate with Camunda 7.
 
 ## How to use
-See the [examples](https://github.com/operaton-org/operaton-task-worker/tree/main/examples) directory.)
+
  */
 
 mod polling;
@@ -23,7 +23,6 @@ pub mod process_variables;
 pub mod types;
 mod api;
 pub mod registry;
-pub mod handlers;
 pub mod settings;
 
 pub use inventory;
