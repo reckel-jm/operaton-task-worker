@@ -60,6 +60,7 @@ The following environment variables are used by the task worker--given that the 
 - `OPERATON_TASK_WORKER_PASSWORD` - Password for the Operaton Task Service (leave empty for anonymous access)
 - `OPERATON_TASK_WORKER_POLL_INTERVAL` - Interval in milliseconds for polling the Operaton Task Service for new tasks
 - `OPERATON_TASK_WORKER_ID` - The task worker id which will be registered with Operaton
+- `OPERATON_TASK_WORKER_LOCK_DURATION` - Duration in milliseconds to lock an external task when picked up by this worker (default: 60000)
 - `RUST_LOG` - Logging level for the application, e.g. `info,operaton_task_worker=debug`
 
 ```rust
@@ -70,12 +71,14 @@ let config = load_config_from_env("OPERATON_TASK_WORKER"); // or use any other p
 #### Using the builder pattern
 ```rust
 use operaton_task_worker::settings::ConfigParams;
+use url::Url;
 
 let config = ConfigParams::default()
     .with_url(Url::parse("http://localhost:8080").unwrap())
     .with_auth("user".to_string(), "pass".to_string())
     .with_poll_interval(1000)
-    .with_worker_id("operaton_task_worker".to_string());
+    .with_worker_id("operaton_task_worker".to_string())
+    .with_lock_duration(60_000);
 ```
 
 ### Registering a Task Handler
