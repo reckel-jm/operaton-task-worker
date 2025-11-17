@@ -29,7 +29,7 @@ pub async fn start_polling_loop(config: ConfigParams) {
 
                 for service_task in service_tasks {
                     // Try to lock the specific external task and read its input variables
-                    if let Err(err) = api::lock_external_task(&config, service_task.id(), 60_000).await {
+                    if let Err(err) = api::lock_external_task(&config, service_task.id(), config.lock_duration()).await {
                         warn!("Could not lock task {}: {:#?}", service_task.id(), err);
                         continue;
                     }
