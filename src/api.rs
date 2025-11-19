@@ -8,46 +8,89 @@ use crate::settings::ConfigParams;
 use crate::structures::process_variables::{parse_process_instance_variables, ProcessInstanceVariable};
 use crate::types::OutputVariables;
 use crate::structures::service_task::ServiceTask;
+use crate::registry;
 
 pub async fn get_open_service_tasks(config: &ConfigParams) -> Result<Vec<ServiceTask>, Box<dyn Error>> {
-    let mut service_tasks_endpoint = config.url().clone();
-    service_tasks_endpoint.set_path("engine-rest/external-task");
-    info!("Fetch data at {}", service_tasks_endpoint);
+    // If any handler declares a topic, fetch per-topic and merge results. Otherwise fetch all.
+    let topics = registry::topics();
+    let include_unfiltered = registry::has_nontopic_handlers() || topics.is_empty();
 
-    // Build the request with optional Basic Auth when username is provided
-    let client = reqwest::Client::new();
-    let mut request = client.get(service_tasks_endpoint.clone());
+    let mut aggregated: Vec<ServiceTask> = Vec::new();
 
-    if !config.username().is_empty() {
-        request = request.basic_auth(config.username().to_string(), Some(config.password().to_string()));
-        trace!("Using HTTP Basic authentication");
-    } else {
-        trace!("No HTTP authentication configured (empty username)");
-    }
+    // Fetch per topic
+    for t in &topics {
+        let mut endpoint = config.url().clone();
+        endpoint.set_path("engine-rest/external-task");
+        endpoint.set_query(Some(&format!("topicName={}", t)));
+        info!("Fetch data at {}", endpoint);
 
-    match request.send().await {
-        Ok(response) => {
-            match response.json().await {
-                Ok(unwrapped_json) => {
-                    let service_tasks: Vec<ServiceTask> = unwrapped_json;
-                    trace!("Parsed: {:#?}", service_tasks);
-                    Ok(service_tasks)
-                },
-                Err(err) => {
-                    error!("An error occurred while parsing the JSON: {:#?}", err);
-                    Err(err.into())
+        let client = reqwest::Client::new();
+        let request = build_authenticated_request(&client, endpoint.clone(), config.username(), config.password());
+
+        match request.send().await {
+            Ok(response) => {
+                match response.json().await {
+                    Ok(mut unwrapped_json) => {
+                        let mut service_tasks: Vec<ServiceTask> = unwrapped_json;
+                        trace!("Parsed: {:#?}", service_tasks);
+                        aggregated.append(&mut service_tasks);
+                    },
+                    Err(err) => {
+                        error!("An error occurred while parsing the JSON: {:#?}", err);
+                        return Err(err.into());
+                    }
                 }
+            },
+            Err(err) => {
+                error!(
+                    "Error while calling API endpoint '{}': {:#?}",
+                    endpoint,
+                    err
+                );
+                return Err(err.into());
             }
-        },
-        Err(err) => {
-            error!(
-                "Error while calling API endpoint '{}': {:#?}",
-                service_tasks_endpoint,
-                err
-            );
-            Err(err.into())
         }
     }
+
+    // If we also need to include unfiltered (handlers without topics), fetch once without topic
+    if include_unfiltered {
+        let mut endpoint = config.url().clone();
+        endpoint.set_path("engine-rest/external-task");
+        info!("Fetch data at {}", endpoint);
+
+        let client = reqwest::Client::new();
+        let request = build_authenticated_request(&client, endpoint.clone(), config.username(), config.password());
+
+        match request.send().await {
+            Ok(response) => {
+                match response.json().await {
+                    Ok(mut unwrapped_json) => {
+                        let mut service_tasks: Vec<ServiceTask> = unwrapped_json;
+                        trace!("Parsed: {:#?}", service_tasks);
+                        aggregated.append(&mut service_tasks);
+                    },
+                    Err(err) => {
+                        error!("An error occurred while parsing the JSON: {:#?}", err);
+                        return Err(err.into());
+                    }
+                }
+            },
+            Err(err) => {
+                error!(
+                    "Error while calling API endpoint '{}': {:#?}",
+                    endpoint,
+                    err
+                );
+                return Err(err.into());
+            }
+        }
+    }
+
+    // Deduplicate by external task id in case overlaps
+    aggregated.sort_by(|a,b| a.id().cmp(b.id()));
+    aggregated.dedup_by(|a,b| a.id() == b.id());
+
+    Ok(aggregated)
 }
 
 pub fn build_authenticated_request(
