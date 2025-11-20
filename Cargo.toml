@@ -1,8 +1,8 @@
 [package]
 name = "operaton-task-worker"
 authors = ["Jan Martin Reckel <jm.reckel@t-online.de>"]
-description = "A task worker for running service external tasks with Operaton"
-version = "0.1.4"
+description = "External Task Worker for Operaton BPMN Processes"
+version = "0.1.5"
 edition = "2024"
 repository = "https://github.com/reckel-jm/operaton-task-worker"
 license = "MIT"
