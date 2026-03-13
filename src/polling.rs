@@ -40,7 +40,8 @@ pub async fn start_polling_loop(config: ConfigParams) {
                     });
                     trace!("External task variables for {} => {:#?}", service_task.id(), input_vars);
 
-                    if let Some(function) = registry::find(service_task.activity_id()) {
+                    if let Some(function) = registry::find(service_task.activity_id())
+                        .or_else(|| registry::find_by_topic(service_task.topic_name())) {
                         debug!("Executing function for Service Task: {:#?}", service_task);
                         match function(&input_vars) {
                             Ok(output_vars) => {

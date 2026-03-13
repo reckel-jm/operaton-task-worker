@@ -83,13 +83,26 @@ let config = ConfigParams::default()
 
 ### Registering a Task Handler
 
-Create a function with the `task_handler` attribute and annotate it with the name of the task to be handled.
+Create a function with the `task_handler` attribute and annotate it with the name and/or topic of the task to be handled.
+At least one of `name` or `topic` must be provided.
 The function must have the following signature:
 
 ```ignore
+// Match by activity ID (task name):
 #[task_handler(name = "ServiceTask_ID")]
 fn any_function_name(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>>
+
+// Match by service task topic:
+#[task_handler(topic = "my-service-topic")]
+fn any_function_name(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>>
+
+// Match by both name and topic:
+#[task_handler(name = "ServiceTask_ID", topic = "my-service-topic")]
+fn any_function_name(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>>
 ```
+
+When a task is received, the worker first tries to find a handler matching the task's activity ID (`name`).
+If no name-based handler is found, it falls back to finding a handler matching the task's topic name (`topic`).
 
 #### Input Variables
 The input variables are a `HashMap` of `String` to `structures::ProcessInstanceVariable`.
