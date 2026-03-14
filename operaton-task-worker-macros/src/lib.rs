@@ -130,11 +130,11 @@ pub fn task_handler(attr: TokenStream, item: TokenStream) -> TokenStream {
         const _: () = {
             // Ensure `inventory` is linked via the runtime crate and submit this handler
             #runtime_crate_ident::inventory::submit! {
-                #runtime_crate_ident::registry::Handler {
-                    name: #name_tokens,
-                    topic: #topic_tokens,
-                    func: #fn_ident,
-                }
+                #runtime_crate_ident::registry::Handler::new(
+                    #name_tokens,
+                    #topic_tokens,
+                    #fn_ident,
+                )
             }
         };
     };
