@@ -28,9 +28,33 @@ impl Parse for TaskHandlerArgs {
             let value: LitStr = input.parse()?;
 
             match key.to_string().as_str() {
-                "name" => name = Some(value.value()),
-                "topic" => topic = Some(value.value()),
-                other => return Err(syn::Error::new(key.span(), format!("Unknown attribute key '{}'. Expected 'name' or 'topic'.", other))),
+                "name" => {
+                    if name.is_some() {
+                        return Err(syn::Error::new(
+                            key.span(),
+                            "Duplicate 'name' argument in #[task_handler] attribute",
+                        ));
+                    }
+                    name = Some(value.value());
+                }
+                "topic" => {
+                    if topic.is_some() {
+                        return Err(syn::Error::new(
+                            key.span(),
+                            "Duplicate 'topic' argument in #[task_handler] attribute",
+                        ));
+                    }
+                    topic = Some(value.value());
+                }
+                other => {
+                    return Err(syn::Error::new(
+                        key.span(),
+                        format!(
+                            "Unknown attribute key '{}'. Expected 'name' or 'topic'.",
+                            other
+                        ),
+                    ))
+                }
             }
 
             if input.peek(Token![,]) {
