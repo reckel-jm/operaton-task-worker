@@ -79,7 +79,11 @@ pub async fn start_polling_loop(config: ConfigParams) {
                             }
                         }
                     } else {
-                        warn!("No function found for Service Task: {:#?}. SKIP.", service_task.activity_id());
+                        warn!(
+                            "No function found for Service Task (activity_id='{}', topic_name='{}'). SKIP.",
+                            service_task.activity_id(),
+                            service_task.topic_name()
+                        );
                     }
                 };
             },
