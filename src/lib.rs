@@ -90,15 +90,21 @@ The function must have the following signature:
 ```ignore
 // Match by activity ID (task name):
 #[task_handler(name = "ServiceTask_ID")]
-fn any_function_name(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>>
+fn handle_by_name(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>> {
+    unimplemented!()
+}
 
 // Match by service task topic:
 #[task_handler(topic = "my-service-topic")]
-fn any_function_name(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>>
+fn handle_by_topic(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>> {
+    unimplemented!()
+}
 
 // Match by both name and topic:
 #[task_handler(name = "ServiceTask_ID", topic = "my-service-topic")]
-fn any_function_name(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>>
+fn handle_by_name_and_topic(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>> {
+    unimplemented!()
+}
 ```
 
 When a task is received, the worker first tries to find a handler matching the task's activity ID (`name`).
