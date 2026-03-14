@@ -1,9 +1,24 @@
 use crate::types::ExternalTaskFn;
 
 pub struct Handler {
-    pub name: Option<&'static str>,
-    pub topic: Option<&'static str>,
-    pub func: ExternalTaskFn,
+    name: Option<&'static str>,
+    topic: Option<&'static str>,
+    func: ExternalTaskFn,
+}
+
+impl Handler {
+    /// Construct a new handler. At least one of `name` or `topic` must be `Some`.
+    pub const fn new(
+        name: Option<&'static str>,
+        topic: Option<&'static str>,
+        func: ExternalTaskFn,
+    ) -> Handler {
+        debug_assert!(
+            name.is_some() || topic.is_some(),
+            "Handler must have at least a name or a topic"
+        );
+        Handler { name, topic, func }
+    }
 }
 
 inventory::collect!(Handler);
