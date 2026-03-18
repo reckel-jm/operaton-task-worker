@@ -1,7 +1,7 @@
-# Operaton Task Worker
+# Operaton Task Worker for Rust
 
 This project implements a basic [Operaton](https://operaton.org) Task worker for performing execution of Service 
-Tasks in Operaton BPMN processes. It periodically polls the Operaton Task Service for new tasks, handles the execution 
+Tasks in Operaton BPMN processes using Rust. It periodically polls the Operaton Task Service for new tasks, handles the execution 
 of the tasks and updates the Operaton Task Service with the results.
 
 ## Operaton
@@ -13,13 +13,13 @@ The crate uses the Operaton API to poll for external tasks and execute them via 
 The crate is tested with Operaton 1.0 and intends to provide a stable abstraction layer for future Operaton versions.
 Camunda 7 is not supported, however, at the current state, it should be possible to use the crate with Camunda 7 as well.
 
-## How to Use this Crate
+## How to use this crate
 
 Running a task worker with this crate is intended to be very easy and involves two steps:
-- Implement handler functions for the tasks to be executed
-- Start the task worker with the proper configuration
+- Implement handler functions for the tasks to be executed.
+- Start the task worker with the proper configuration.
 
-A minimal working axample of a task worker with one handler function looks like this:
+A minimal working example of a task worker with one handler function looks like this:
 
 ```rust
 use operaton_task_worker::{poll, settings};
@@ -37,8 +37,15 @@ async fn main() {
   poll(config).await;
 }
 
+// Fetch a task by the topic id (recommended)
+#[task_handler(topic = "grant-approval")]
+fn service_task_grant_approval_by_topic(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>> {
+  Ok(std::collections::HashMap::new())
+}
+
+// Fetch a task by its task_id
 #[task_handler(name = "ServiceTask_Grant_Approval")]
-fn service_task_grant_approval(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>> {
+fn service_task_grant_approval_by_task_id(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>> {
   Ok(std::collections::HashMap::new())
 }
 ```
@@ -81,29 +88,36 @@ let config = ConfigParams::default()
     .with_lock_duration(60_000);
 ```
 
-### Registering a Task Handler
+### Registering a task handler
 
-Create a function with the `task_handler` attribute and annotate it with the name of the task to be handled.
+Create a function with the `task_handler` attribute and annotate it with the **topic** or the **name** of the task to be handled.
 The function must have the following signature:
 
+#### Registering task handler by topic
+```rust
+#[task_handler(topic = "topic_name")]
+fn any_function_name(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>>
+```
+
+#### Registering task handler by task id
 ```rust
 #[task_handler(name = "ServiceTask_ID")]
 fn any_function_name(_input: &operaton_task_worker::types::InputVariables) -> Result<operaton_task_worker::types::OutputVariables, Box<dyn std::error::Error>>
 ```
 
-#### Input Variables
+### Input variables
 The input variables are a `HashMap` of `String` to `structures::ProcessInstanceVariable`.
 The values are deserialized and are statically typed according to the type of the variable.
 
-#### Returning Successful Executions
+### Returning successful executions
 - Return `Ok(HashMap::new())` to indicate that the task was executed successfully.
 - Return `Ok(...)` with a non-empty output variable map to indicate that the task was executed successfully and that the output variables should be updated.
 
-#### Returning errors from a handler
+### Returning errors from a handler
 - For a BPMN Business Error (Camunda 7/Operaton), return `Err(Box::new(BpmnError::new(code, message)))`.
   The worker will call `/external-task/{id}/bpmnError`.
 - For technical failures, return any other error; the worker calls `/external-task/{id}/failure` with `retries=0`.
 
-## Questions and Contributions
+## Questions and contributions
 
 Feel free to open an issue or a pull request.

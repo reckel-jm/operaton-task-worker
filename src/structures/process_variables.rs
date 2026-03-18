@@ -272,11 +272,14 @@ mod test {
         let variables = parse_process_instance_variables(response_string);
         dbg!(&variables);
         assert!(!(variables.is_empty()))
-
     }
 
     #[test]
     fn test_module_parsing_invalid() {
         let response_string: &str = "{\"invalid\":}";
+
+        let variables = parse_process_instance_variables(response_string);
+        dbg!(&variables);
+        assert!(variables.is_empty())
     }
 }
