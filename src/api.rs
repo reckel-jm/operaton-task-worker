@@ -30,7 +30,7 @@ pub async fn get_open_service_tasks(config: &ConfigParams) -> Result<Vec<Service
         match request.send().await {
             Ok(response) => {
                 match response.json().await {
-                    Ok(mut unwrapped_json) => {
+                    Ok(unwrapped_json) => {
                         let mut service_tasks: Vec<ServiceTask> = unwrapped_json;
                         trace!("Parsed: {:#?}", service_tasks);
                         aggregated.append(&mut service_tasks);
@@ -64,7 +64,7 @@ pub async fn get_open_service_tasks(config: &ConfigParams) -> Result<Vec<Service
         match request.send().await {
             Ok(response) => {
                 match response.json().await {
-                    Ok(mut unwrapped_json) => {
+                    Ok(unwrapped_json) => {
                         let mut service_tasks: Vec<ServiceTask> = unwrapped_json;
                         trace!("Parsed: {:#?}", service_tasks);
                         aggregated.append(&mut service_tasks);
