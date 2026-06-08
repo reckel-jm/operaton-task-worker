@@ -11,7 +11,7 @@ fn test_handler(_input: &InputVariables) -> Result<OutputVariables, Box<dyn std:
 }
 
 
-#[task_handler(name = "example_echo")]
+#[task_handler(topic = "example_echo")]
 pub fn example_echo(input: &InputVariables) -> Result<OutputVariables, Box<dyn std::error::Error>> {
     let mut out: OutputVariables = std::collections::HashMap::new();
     out.insert("workerResponse".to_string(), out_string("ok"));
@@ -24,7 +24,7 @@ pub fn example_echo(input: &InputVariables) -> Result<OutputVariables, Box<dyn s
     Ok(out)
 }
 
-#[task_handler(name = "ServiceTask_GetScannedFiles")]
+#[task_handler(topic = "ServiceTask_GetScannedFiles")]
 pub fn get_scanned_files(_input: &InputVariables) -> Result<OutputVariables, Box<dyn std::error::Error>> {
     let mut out: OutputVariables = std::collections::HashMap::new();
     out.insert("FILENAMES".to_string(), out_string("TEST"));
