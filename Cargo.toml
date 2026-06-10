@@ -2,7 +2,7 @@
 name = "operaton-task-worker"
 authors = ["Jan Martin Reckel <jm.reckel@t-online.de>"]
 description = "External Task Worker for Operaton BPMN Processes"
-version = "0.1.5"
+version = "0.4.0"
 edition = "2024"
 repository = "https://github.com/reckel-jm/operaton-task-worker"
 license = "MIT"
@@ -15,7 +15,7 @@ name = "operaton_task_worker"
 
 [dependencies]
 reqwest = { version = "0.12", features = ["json"] }
-tokio =  { version = "1", features = ["full"] }
+tokio =  { version = "1.48", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 config = "0.15"
 url = { version = "2.5", features = ["default", "serde"] }
@@ -23,7 +23,7 @@ log = "0.4"
 env_logger = "0.11"
 serde_json = "1.0.145"
 inventory = "0.3"
-operaton-task-worker-macros = { version = "0.1", path = "operaton-task-worker-macros" }
+operaton-task-worker-macros = { version = "0.4.0", path = "operaton-task-worker-macros" }
 
 [profile.release]
 lto = true
