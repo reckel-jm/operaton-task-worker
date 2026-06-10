@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -49,9 +50,18 @@ pub struct StringVar {
     pub value_info: HashMap<String, serde_json::Value>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ObjectVar {
+    pub value: serde_json::Value,
+
+    #[serde(rename = "valueInfo")]
+    pub value_info: HashMap<String, serde_json::Value>,
+}
+
 #[derive(Debug)]
 pub enum ProcessInstanceVariable {
     Json(JsonVar),
+    Object(ObjectVar),
     Boolean(BoolVar),
     String(StringVar),
 }
@@ -72,8 +82,61 @@ impl ProcessInstanceVariable {
     pub fn as_json(&self) -> Option<&serde_json::Value> {
         match self {
             ProcessInstanceVariable::Json(j) => Some(&j.json_value.value),
+            ProcessInstanceVariable::Object(o) => Some(&o.value),
             _ => None,
         }
+    }
+
+    pub fn as_typed<T: DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
+        match self {
+            ProcessInstanceVariable::Json(j) => serde_json::from_value(j.json_value.value.clone()),
+            ProcessInstanceVariable::Object(o) => serde_json::from_value(o.value.clone()),
+            ProcessInstanceVariable::Boolean(b) => serde_json::from_value(serde_json::Value::Bool(b.value)),
+            ProcessInstanceVariable::String(s) => {
+                serde_json::from_value(serde_json::Value::String(s.value.clone()))
+            }
+        }
+    }
+
+    pub fn as_object_string(&self) -> Option<String> {
+        match self {
+            ProcessInstanceVariable::Object(o) => match &o.value {
+                serde_json::Value::String(raw) => Some(raw.clone()),
+                other => Some(other.to_string()),
+            },
+            _ => None,
+        }
+    }
+}
+
+fn is_json_serialized_object(value_info: &HashMap<String, serde_json::Value>) -> bool {
+    let data_format_is_json = value_info
+        .get("serializationDataFormat")
+        .and_then(serde_json::Value::as_str)
+        .map(|fmt| fmt.eq_ignore_ascii_case("application/json"))
+        .unwrap_or(false);
+
+    let is_java_array_list = value_info
+        .get("objectTypeName")
+        .and_then(serde_json::Value::as_str)
+        .map(|type_name| type_name.starts_with("java.util.ArrayList"))
+        .unwrap_or(false);
+
+    data_format_is_json || is_java_array_list
+}
+
+fn parse_object_json_value(
+    value: serde_json::Value,
+    value_info: &HashMap<String, serde_json::Value>,
+) -> serde_json::Value {
+    if !is_json_serialized_object(value_info) {
+        return value;
+    }
+
+    match value {
+        serde_json::Value::String(raw) => serde_json::from_str(&raw)
+            .unwrap_or_else(|_| serde_json::Value::String(raw)),
+        other => other,
     }
 }
 
@@ -110,6 +173,13 @@ impl<'de> Deserialize<'de> for ProcessInstanceVariable {
                         value_info: entry.value_info,
                     };
                     Ok(ProcessInstanceVariable::Json(json_var))
+                }
+                "Object" => {
+                    let object_var = ObjectVar {
+                        value: parse_object_json_value(entry.value, &entry.value_info),
+                        value_info: entry.value_info,
+                    };
+                    Ok(ProcessInstanceVariable::Object(object_var))
                 }
                 "Boolean" => {
                     let bool_var = BoolVar {
@@ -161,6 +231,10 @@ pub fn parse_process_instance_variables(json_str: &str) -> HashMap<String, Proce
                         node_type: String::new(),
                     }
                 }),
+                value_info: entry.value_info,
+            }),
+            "Object" => ProcessInstanceVariable::Object(ObjectVar {
+                value: parse_object_json_value(entry.value, &entry.value_info),
                 value_info: entry.value_info,
             }),
             "Boolean" => ProcessInstanceVariable::Boolean(BoolVar {
@@ -256,7 +330,8 @@ pub fn parse_process_instance_variables(json_str: &str) -> HashMap<String, Proce
 
 #[cfg(test)]
 mod test {
-    use crate::structures::process_variables::parse_process_instance_variables;
+    use crate::structures::process_variables::{parse_process_instance_variables, ProcessInstanceVariable};
+    use serde::Deserialize;
 
     #[test]
     fn test_module_parsing() {
@@ -281,5 +356,95 @@ mod test {
         let variables = parse_process_instance_variables(response_string);
         dbg!(&variables);
         assert!(variables.is_empty())
+    }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct WishlistItem {
+        name: String,
+        amount: u32,
+    }
+
+    #[test]
+    fn test_module_parsing_object_arraylist_json() {
+        let response_string = r#"{
+            "wishlist": {
+                "type": "Object",
+                "value": "[{\"name\":\"Vier Jahreszeiten\",\"amount\":5}]",
+                "valueInfo": {
+                    "serializationDataFormat": "application/json",
+                    "objectTypeName": "java.util.ArrayList"
+                }
+            }
+        }"#;
+
+        let variables = parse_process_instance_variables(response_string);
+        let parsed = variables
+            .get("wishlist")
+            .expect("wishlist variable missing")
+            .as_typed::<Vec<WishlistItem>>()
+            .expect("wishlist should deserialize into Vec<WishlistItem>");
+
+        assert_eq!(
+            parsed,
+            vec![WishlistItem {
+                name: "Vier Jahreszeiten".to_string(),
+                amount: 5,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_object_with_non_json_data_format_stays_string() {
+        let response_string = r#"{
+            "opaque": {
+                "type": "Object",
+                "value": "not-json",
+                "valueInfo": {
+                    "serializationDataFormat": "application/xml",
+                    "objectTypeName": "java.util.ArrayList"
+                }
+            }
+        }"#;
+
+        let variables = parse_process_instance_variables(response_string);
+        let opaque = variables.get("opaque").expect("opaque variable missing");
+        match opaque {
+            ProcessInstanceVariable::Object(obj) => {
+                assert_eq!(obj.value, serde_json::Value::String("not-json".to_string()));
+            }
+            _ => panic!("expected Object variant"),
+        }
+    }
+
+    #[test]
+    fn test_object_as_string_from_arraylist_json() {
+        let response_string = r#"{
+            "wishlist": {
+                "type": "Object",
+                "value": "[{\"name\":\"Margherita\",\"amount\":2}]",
+                "valueInfo": {
+                    "serializationDataFormat": "application/json",
+                    "objectTypeName": "java.util.ArrayList"
+                }
+            }
+        }"#;
+
+        let variables = parse_process_instance_variables(response_string);
+        let raw = variables
+            .get("wishlist")
+            .expect("wishlist variable missing")
+            .as_object_string()
+            .expect("wishlist object should be convertible to string");
+
+        let parsed_raw: serde_json::Value =
+            serde_json::from_str(&raw).expect("object string should be valid JSON");
+        let expected: serde_json::Value = serde_json::json!([
+            {
+                "name": "Margherita",
+                "amount": 2
+            }
+        ]);
+
+        assert_eq!(parsed_raw, expected);
     }
 }

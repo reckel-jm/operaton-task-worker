@@ -96,7 +96,10 @@ pub async fn get_open_service_tasks(config: &ConfigParams) -> Result<Vec<Service
     for t in &topics {
         let mut endpoint = config.url().clone();
         endpoint.set_path("engine-rest/external-task");
-        endpoint.set_query(Some(&format!("topicName={}", t)));
+        endpoint.set_query(Some(&format!(
+            "topicName={}&active=true&notLocked=true&withRetriesLeft=true",
+            t
+        )));
         info!("Fetch data at {}", endpoint);
 
         let client = reqwest::Client::new();
@@ -131,6 +134,7 @@ pub async fn get_open_service_tasks(config: &ConfigParams) -> Result<Vec<Service
     if include_unfiltered {
         let mut endpoint = config.url().clone();
         endpoint.set_path("engine-rest/external-task");
+        endpoint.set_query(Some("active=true&notLocked=true&withRetriesLeft=true"));
         info!("Fetch data at {}", endpoint);
 
         let client = reqwest::Client::new();

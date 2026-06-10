@@ -109,9 +109,120 @@ fn any_function_name(_input: &operaton_task_worker::types::InputVariables) -> Re
 The input variables are a `HashMap` of `String` to `structures::ProcessInstanceVariable`.
 The values are deserialized and are statically typed according to the type of the variable.
 
+`Object` variables serialized as JSON (for example with `objectTypeName = java.util.ArrayList`) are parsed into JSON values.
+You can deserialize them directly into your domain types with `as_typed`:
+
+```rust
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct WishlistItem {
+  name: String,
+  amount: u32,
+}
+
+fn read_wishlist(input: &operaton_task_worker::types::InputVariables) {
+  let wishlist: Vec<WishlistItem> = input
+    .get("wishlist")
+    .expect("missing variable wishlist")
+    .as_typed()
+    .expect("wishlist is not valid JSON array");
+
+  println!("Loaded {} wishlist entries", wishlist.len());
+}
+```
+
+Example with nested structs and optional fields:
+
+```rust
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct Address {
+  city: String,
+  street: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Customer {
+  id: String,
+  address: Address,
+}
+
+#[derive(Debug, Deserialize)]
+struct OrderLine {
+  sku: String,
+  quantity: u32,
+}
+
+#[derive(Debug, Deserialize)]
+struct OrderPayload {
+  customer: Customer,
+  lines: Vec<OrderLine>,
+  note: Option<String>,
+}
+
+fn read_orders(input: &operaton_task_worker::types::InputVariables) {
+  let orders: Vec<OrderPayload> = input
+    .get("orders")
+    .expect("missing variable orders")
+    .as_typed()
+    .expect("orders is not a valid serialized JSON array");
+
+  for order in orders {
+    println!("Customer {} from {}", order.customer.id, order.customer.address.city);
+  }
+}
+```
+
+If you want to access an `Object` variable as a plain string (for example to forward the serialized payload), use `as_object_string()`:
+
+```rust
+fn forward_object_payload(input: &operaton_task_worker::types::InputVariables) {
+  let payload: String = input
+    .get("orders")
+    .expect("missing variable orders")
+    .as_object_string()
+    .expect("orders is not an Object variable");
+
+  println!("Forwarding payload: {}", payload);
+}
+```
+
 ### Returning successful executions
 - Return `Ok(HashMap::new())` to indicate that the task was executed successfully.
 - Return `Ok(...)` with a non-empty output variable map to indicate that the task was executed successfully and that the output variables should be updated.
+
+To return JSON output variables you have two options:
+
+- `out_json(...)` sends a typed variable with `type = Json`.
+- `out_json_object(...)` sends a typed variable with `type = Object` and JSON serialization metadata (often more compatible with Java-side object handling).
+
+```rust
+use operaton_task_worker::types::{out_json, out_json_object, OutputVariables};
+
+fn build_output() -> OutputVariables {
+  let mut result = std::collections::HashMap::new();
+
+  let output = serde_json::json!({
+    "status": "ok",
+    "items": [1, 2, 3]
+  });
+
+  // Json typed value
+  result.insert("json_out".to_string(), out_json(&output));
+
+  // Object typed value with serializationDataFormat=application/json.
+  // Arrays are emitted as objectTypeName=java.util.ArrayList.
+  result.insert("json_object_out".to_string(), out_json_object(&output));
+
+  result
+}
+```
+
+Troubleshooting (`ENGINE-02041 Class 'java.lang.String' doesn't implement '...DelegateVariableMapping'`):
+- This error is usually caused by BPMN model configuration (`delegateVariableMapping`) resolving to a String at runtime, not by JSON serialization alone.
+- If this appears when writing a JSON output variable, verify your Call Activity variable mapping setup and consider writing JSON as `Object` via `out_json_object(...)`.
 
 ### Returning errors from a handler
 - For a BPMN Business Error (Camunda 7/Operaton), return `Err(Box::new(BpmnError::new(code, message)))`.
